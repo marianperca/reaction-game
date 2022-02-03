@@ -3,17 +3,21 @@
 #include <LiquidCrystal_I2C.h>
 #include <EEPROM.h>
 
-#define BUTTON_RED D10
-#define BUTTON_YELLOW D4
-#define BUTTON_BLUE D3
-#define BUTTON_GREEN D9
+#define BUTTON_RED 2
+#define LED_RED 3
 
-#define LED_RED 10
-#define LED_YELLOW D5
-#define LED_BLUE D6
-#define LED_GREEN D7
+#define BUTTON_YELLOW 4
+#define LED_YELLOW 5
+
+#define BUTTON_BLUE 6
+#define LED_BLUE 7
+
+#define BUTTON_GREEN 8
+#define LED_GREEN 9
 
 #define EEPROM_ADDR 0
+
+#define LCD_CHARS = 16.0
 
 OneButton buttonRed(BUTTON_RED, true);
 OneButton buttonBlue(BUTTON_BLUE, true);
@@ -21,7 +25,7 @@ OneButton buttonYellow(BUTTON_YELLOW, true);
 OneButton buttonGreen(BUTTON_GREEN, true);
 
 // set the LCD address to 0x27 for a 16 chars and 2 line display
-LiquidCrystal_I2C lcd(0x27, 20, 4); 
+LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 int ledPins[4] = {LED_RED, LED_YELLOW, LED_BLUE, LED_GREEN};
 
@@ -35,9 +39,16 @@ int buttonPresses = 1; // determines current level
 int highScore = 0;
 int currentScore = 0;
 
+byte zero[] = {B00000, B00000, B00000, B00000, B00000, B00000, B00000, B00000};
+byte one[] = {B10000, B10000, B10000, B10000, B10000, B10000, B10000, B10000};
+byte two[] = {B11000, B11000, B11000, B11000, B11000, B11000, B11000, B11000};
+byte three[] = {B11100, B11100, B11100, B11100, B11100, B11100, B11100, B11100};
+byte four[] = {B11110, B11110, B11110, B11110, B11110, B11110, B11110, B11110};
+byte five[] = {B11111, B11111, B11111, B11111, B11111, B11111, B11111, B11111};
+
 void showWelcomeLights()
 {
-  // Serial.println("welcome");
+    // Serial.println("welcome");
     for (int i = 0; i < 2; i++)
     {
         digitalWrite(LED_BLUE, HIGH);
@@ -154,19 +165,20 @@ void showScore()
 
     lcd.setCursor(0, 0);
     lcd.print("Scorul tau: ");
-    lcd.print(currentScore);
+    lcd.print(String(currentScore));
 
     lcd.setCursor(0, 1);
     lcd.print("Scorul max: ");
-    lcd.print(highScore);
+    lcd.print(String(highScore));
 }
 
 void gameOverHandler(bool won)
 {
     // store score
     currentScore = (level + 1) * 10 + buttonPresses;
-    
-    if (currentScore > highScore) {
+
+    if (currentScore > highScore)
+    {
         highScore = currentScore;
         EEPROM.write(EEPROM_ADDR, currentScore);
     }
@@ -211,13 +223,13 @@ void buttonPress(int ledColor)
 
 void clickRed()
 {
-  // Serial.println("click red");
+    // Serial.println("click red");
     buttonPress(LED_RED);
 }
 
 void clickBlue()
 {
-  // Serial.println("click blue");
+    // Serial.println("click blue");
     if (gameOver)
     {
         // start game
@@ -235,13 +247,13 @@ void clickBlue()
 
 void clickYellow()
 {
-  // Serial.println("click yellow");
+    // Serial.println("click yellow");
     buttonPress(LED_YELLOW);
 }
 
 void clickGreen()
 {
-  // Serial.println("click green");
+    // Serial.println("click green");
     buttonPress(LED_GREEN);
 }
 
@@ -261,12 +273,47 @@ void setup()
     buttonGreen.attachClick(clickGreen);
 
     lcd.init();
+    lcd.createChar(0, zero);
+    lcd.createChar(1, one);
+    lcd.createChar(2, two);
+    lcd.createChar(3, three);
+    lcd.createChar(4, four);
+    lcd.createChar(5, five);
+
     lcd.backlight();
     lcd.clear();
 
     highScore = EEPROM.read(EEPROM_ADDR);
     showScore();
     showWelcomeLights();
+}
+
+void updateProgressBar(unsigned long count, unsigned long totalCount, int lineToPrintOn)
+{
+    double factor = totalCount / 80.0;
+    int percent = (count + 1) / factor;
+    int number = percent / 5;
+    int remainder = percent % 5;
+    if (number > 0)
+    {
+        for (int j = 0; j < number; j++)
+        {
+            lcd.setCursor(j, lineToPrintOn);
+            lcd.write(5);
+        }
+    }
+
+    lcd.setCursor(number, lineToPrintOn);
+    lcd.write(remainder);
+
+    if (number < 16) // If using a 20 character display, this should be 20!
+    {
+        for (int j = number + 1; j <= 16; j++) // If using a 20 character display, this should be 20!
+        {
+            lcd.setCursor(j, lineToPrintOn);
+            lcd.write(0);
+        }
+    }
 }
 
 void gameLoop()
@@ -297,12 +344,20 @@ void gameLoop()
     if (levelInterval == 250)
     {
         gameOverHandler(true);
+
+        return;
     }
 
-    if (now - lightShowReference > levelInterval)
+    long time_passed = now - lightShowReference;
+
+    if (time_passed > levelInterval)
     {
         gameOverHandler(false);
+        
+        return;
     }
+
+    updateProgressBar(levelInterval - time_passed, levelInterval, 1);
 }
 
 void loop()
