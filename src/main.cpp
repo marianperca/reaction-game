@@ -30,8 +30,8 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 int ledPins[4] = {LED_RED, LED_YELLOW, LED_BLUE, LED_GREEN};
 
 bool gameOver = true;
-int interval = 2000;        // to start with
-int intervalDecrease = 250; // with how many ms the interval decreases for each level
+int interval = 2500;        // to start with
+int intervalDecrease = 50; // with how many ms the interval decreases for each level
 long lightShowReference;    // timestamp when one of the lights was turned on
 long currentColor;
 int level = 0;
@@ -154,8 +154,7 @@ void resetGameParams()
     gameOver = true;
     lightShowReference = 0;
     interval = 2000;
-    buttonPresses = 1;
-    level = 0;
+    buttonPresses = 0;
     currentScore = 0;
 }
 
@@ -175,7 +174,7 @@ void showScore()
 void gameOverHandler(bool won)
 {
     // store score
-    currentScore = (level + 1) * 10 + buttonPresses;
+    currentScore = buttonPresses;
 
     if (currentScore > highScore)
     {
@@ -259,7 +258,7 @@ void clickGreen()
 
 void setup()
 {
-    // Serial.begin(9600);
+    //Serial.begin(9600);
 
     // setup LED mode as output
     pinMode(LED_RED, OUTPUT);
@@ -333,13 +332,11 @@ void gameLoop()
         turnOnOffLed(currentColor, HIGH);
     }
 
-    if (buttonPresses > 0 && buttonPresses % (4 + level) == 0)
-    {
-        level++;
-        buttonPresses = 1;
-    }
+    int levelInterval = interval - buttonPresses * intervalDecrease;
 
-    int levelInterval = interval - intervalDecrease * level;
+    if (levelInterval <= 750) {
+        levelInterval = 750;
+    }
 
     if (levelInterval == 250)
     {
@@ -353,7 +350,7 @@ void gameLoop()
     if (time_passed > levelInterval)
     {
         gameOverHandler(false);
-        
+
         return;
     }
 
