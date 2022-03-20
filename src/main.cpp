@@ -17,7 +17,8 @@
 
 #define EEPROM_ADDR 0
 
-#define LCD_CHARS = 16.0
+#define LCD_CHARS 16
+#define LCD_BARS_PER_CHAR 5
 
 OneButton buttonRed(BUTTON_RED, true);
 OneButton buttonBlue(BUTTON_BLUE, true);
@@ -30,15 +31,15 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 int ledPins[4] = {LED_RED, LED_YELLOW, LED_BLUE, LED_GREEN};
 
 bool gameOver = true;
-int interval = 2500;        // to start with
+int interval = 2500; // to start with
 int intervalDecrease = 50; // with how many ms the interval decreases for each level
-long lightShowReference;    // timestamp when one of the lights was turned on
+long lightOnTimestamp; // timestamp when one of the lights was turned on, based on this we calculat how much time is left
 long currentColor;
-int level = 0;
 int buttonPresses = 1; // determines current level
 int highScore = 0;
 int currentScore = 0;
 
+// define custom chars for progress bar
 byte zero[] = {B00000, B00000, B00000, B00000, B00000, B00000, B00000, B00000};
 byte one[] = {B10000, B10000, B10000, B10000, B10000, B10000, B10000, B10000};
 byte two[] = {B11000, B11000, B11000, B11000, B11000, B11000, B11000, B11000};
@@ -89,29 +90,6 @@ void showWelcomeLights()
     }
 }
 
-void showWinnerLights()
-{
-    for (int i = 0; i < 3; i++)
-    {
-        digitalWrite(LED_BLUE, HIGH);
-        delay(100);
-
-        digitalWrite(LED_BLUE, LOW);
-        digitalWrite(LED_YELLOW, HIGH);
-        delay(100);
-
-        digitalWrite(LED_YELLOW, LOW);
-        digitalWrite(LED_RED, HIGH);
-        delay(100);
-
-        digitalWrite(LED_RED, LOW);
-        digitalWrite(LED_GREEN, HIGH);
-        delay(100);
-
-        digitalWrite(LED_GREEN, LOW);
-    }
-}
-
 void showGameOverLights()
 {
     // blink 3 times
@@ -152,8 +130,7 @@ void showStartGameLights()
 void resetGameParams()
 {
     gameOver = true;
-    lightShowReference = 0;
-    interval = 2000;
+    lightOnTimestamp = 0;
     buttonPresses = 0;
     currentScore = 0;
 }
@@ -171,7 +148,7 @@ void showScore()
     lcd.print(String(highScore));
 }
 
-void gameOverHandler(bool won)
+void gameOverHandler()
 {
     // store score
     currentScore = buttonPresses;
@@ -185,14 +162,7 @@ void gameOverHandler(bool won)
     showScore();
     resetGameParams();
 
-    if (won)
-    {
-        showWinnerLights();
-    }
-    else
-    {
-        showGameOverLights();
-    }
+    showGameOverLights();
 }
 
 void turnOnOffLed(int led, int state)
@@ -209,12 +179,12 @@ void buttonPress(int ledColor)
 
     if (currentColor != ledColor)
     {
-        gameOverHandler(false);
+        gameOverHandler();
     }
     else
     {
         buttonPresses++;
-        lightShowReference = 0;
+        lightOnTimestamp = 0;
         turnOnOffLed(currentColor, LOW);
         delay(100);
     }
@@ -228,7 +198,6 @@ void clickRed()
 
 void clickBlue()
 {
-    // Serial.println("click blue");
     if (gameOver)
     {
         // start game
@@ -246,19 +215,17 @@ void clickBlue()
 
 void clickYellow()
 {
-    // Serial.println("click yellow");
     buttonPress(LED_YELLOW);
 }
 
 void clickGreen()
 {
-    // Serial.println("click green");
     buttonPress(LED_GREEN);
 }
 
 void setup()
 {
-    //Serial.begin(9600);
+    Serial.begin(9600);
 
     // setup LED mode as output
     pinMode(LED_RED, OUTPUT);
@@ -289,25 +256,28 @@ void setup()
 
 void updateProgressBar(unsigned long count, unsigned long totalCount, int lineToPrintOn)
 {
-    double factor = totalCount / 80.0;
+    double factor = totalCount / (LCD_CHARS * LCD_BARS_PER_CHAR);
     int percent = (count + 1) / factor;
-    int number = percent / 5;
-    int remainder = percent % 5;
-    if (number > 0)
+    int full_bars_to_show = percent / 5;
+    int partial_bar_lines_to_show = percent % 5;
+    
+    if (full_bars_to_show > 0)
     {
-        for (int j = 0; j < number; j++)
+        for (int j = 0; j < full_bars_to_show; j++)
         {
             lcd.setCursor(j, lineToPrintOn);
             lcd.write(5);
         }
     }
 
-    lcd.setCursor(number, lineToPrintOn);
-    lcd.write(remainder);
+    lcd.setCursor(full_bars_to_show, lineToPrintOn);
+    lcd.write(partial_bar_lines_to_show); // write partial bar
 
-    if (number < 16) // If using a 20 character display, this should be 20!
+    // clear rest of the line. 
+    // for example if we have 5 full bars to show, the rest till 16 chars should be cleared
+    if (full_bars_to_show < LCD_CHARS)
     {
-        for (int j = number + 1; j <= 16; j++) // If using a 20 character display, this should be 20!
+        for (int j = full_bars_to_show + 1; j <= LCD_CHARS; j++)
         {
             lcd.setCursor(j, lineToPrintOn);
             lcd.write(0);
@@ -324,10 +294,10 @@ void gameLoop()
 
     long now = millis();
 
-    if (lightShowReference == 0)
+    if (lightOnTimestamp == 0)
     {
         currentColor = ledPins[random(4)];
-        lightShowReference = now;
+        lightOnTimestamp = now;
 
         turnOnOffLed(currentColor, HIGH);
     }
@@ -338,18 +308,11 @@ void gameLoop()
         levelInterval = 750;
     }
 
-    if (levelInterval == 250)
-    {
-        gameOverHandler(true);
-
-        return;
-    }
-
-    long time_passed = now - lightShowReference;
+    long time_passed = now - lightOnTimestamp;
 
     if (time_passed > levelInterval)
     {
-        gameOverHandler(false);
+        gameOverHandler();
 
         return;
     }
